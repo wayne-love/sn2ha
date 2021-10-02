@@ -1,0 +1,11 @@
+set ip dhcp 1
+set wlan ssid Some$WIFI
+set wlan phrase some$easy$words
+set wlan channel 0
+set wlan linkmon 30
+set sys autoconn 0
+set ip host 0.0.0.0
+set com idle 60
+set wlan join 1
+save
+reboot
