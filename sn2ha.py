@@ -50,6 +50,8 @@ class SpaNetSpa:
     cleaning_UV = False
     cleaning_Sanitise = False
     lights = False
+    hpump_ambi_temp = 0
+    hpump_cond_temp = 0
     _response = b''
 
 
@@ -111,6 +113,8 @@ class SpaNetSpa:
             self.heating = bool(int(self.response[104])) # Is the heating running
             self.cleaning_UV = bool(int(self.response[103])) # Is the ozone/UV cleaning running
             self.cleaning_Sanitise = bool(int(self.response[108])) # Is the sanatise cycle running
+            self.hpump_ambi_temp = int(self.response[251])
+            self.hpump_cond_temp = int(self.response[252])
             return True
         except:
             logger.error("Timeout reading from SpaNet controller")
@@ -146,6 +150,7 @@ client.subscribe(baseTopic + "/+/set")
 
 if homeAssistantDiscovery:
 
+    # Temperature current & set
     ha_discovery = {
         "name": spaName,
         "max_temp": 41.0,
@@ -163,10 +168,41 @@ if homeAssistantDiscovery:
         "current_temperature_topic": baseTopic+"/current_temp/value",
         "temperature_command_topic": baseTopic+"/set_temp/set",
         "unit_of_measurement": "°C"
-
     }
-
     client.publish("homeassistant/climate/spanet_"+spaName+"/config",json.dumps(ha_discovery),retain=True)
+
+    #Heat pump ambient temp
+    ha_discovery = {
+        "availability_topic": baseTopic+"/available",
+        "device": {
+            "identifiers": [spaName],
+            "manufacturer": "SpaNet",
+            "name": spaName
+        },
+        "device_class": "temperature",
+        "state_topic":baseTopic+"/hpump_ambi_temp/value",
+        "name": "Heat pump ambient temperature",
+        "unique_id": "spanet_" + spaName +"_hpump_ampi_temp",
+        "unit_of_measurement": "°C"
+    }
+    client.publish("homeassistant/sensor/spanet_"+spaName+"/hpump_ambi_temp/config",json.dumps(ha_discovery),retain=True)
+
+    #Heat condensor temp
+    ha_discovery = {
+        "availability_topic": baseTopic+"/available",
+        "device": {
+            "identifiers": [spaName],
+            "manufacturer": "SpaNet",
+            "name": spaName
+        },
+        "device_class": "temperature",
+        "state_topic":baseTopic+"/hpump_cond_temp/value",
+        "name": "Heat pump condensor temperature",
+        "unique_id": "spanet_" + spaName +"_hpump_cond_temp",
+        "unit_of_measurement": "°C"
+    }
+    client.publish("homeassistant/sensor/spanet_"+spaName+"/hpump_cond_temp/config",json.dumps(ha_discovery),retain=True)
+
 
     ha_discovery = {
         "availability_topic": baseTopic+"/available",
@@ -253,6 +289,8 @@ while True:
             logger.info("Successful read")
             lastUpdate = datetime.now()
             client.publish(baseTopic + "/set_temp/value",spa.set_temp,retain=True)
+            client.publish(baseTopic + "/hpump_ambi_temp/value",spa.hpump_ambi_temp,retain=True)
+            client.publish(baseTopic + "/hpump_cond_temp/value",spa.hpump_cond_temp,retain=True)
             client.publish(baseTopic + "/current_temp/value",spa.current_temp,retain=True)
             client.publish(baseTopic + "/heating/value",spa.heating,retain=True)
             client.publish(baseTopic + "/cleaning_UV/value",spa.cleaning_UV,retain=True)
