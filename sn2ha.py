@@ -44,6 +44,7 @@ mqttHandler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(messa
 logger.addHandler(mqttHandler)
 
 class SpaNetSpa:
+    set_temp = 0
     current_temp = 0
     heating = False
     cleaning_UV = False
@@ -94,6 +95,9 @@ class SpaNetSpa:
                 self.send_command(s,"W12","W12")
             if entry=="lights":
                 self.send_command(s,"W14","W14")
+            if entry=="set_temp":
+                tempStr = str(int(float(setValue)*10))
+                self.send_command(s,"W40:"+tempStr,tempStr)
 
         try:
             self.send(s,'\n'.encode())
@@ -101,6 +105,7 @@ class SpaNetSpa:
             self.response = s.recv(1024).split(b",")
             s.close
 
+            self.set_temp = int(self.response[128].decode())/10
             self.current_temp = int(self.response[107].decode())/10
             self.lights = bool(int(self.response[106])) # Lights on or off
             self.heating = bool(int(self.response[104])) # Is the heating running
@@ -140,21 +145,28 @@ client.on_message = on_message
 client.subscribe(baseTopic + "/+/set")
 
 if homeAssistantDiscovery:
+
     ha_discovery = {
-        "availability_topic": baseTopic+"/available",
+        "name": spaName,
+        "max_temp": 41.0,
+        "min_temp": 5.0,
+        "precision": 0.1,
+        "temp_step": 0.5,
+        "unique_id": "spanet_" + spaName +"_heating",
         "device": {
             "identifiers": [spaName],
             "manufacturer": "SpaNet",
             "name": spaName
         },
-        "device_class": "temperature",
-        "state_topic":baseTopic+"/current_temp/value",
-        "name": "Current Temperature",
-        "unique_id": "spanet_" + spaName +"_current_temp",
+        "availability_topic": baseTopic+"/available",
+        "temperature_state_topic": baseTopic+"/set_temp/value",
+        "current_temperature_topic": baseTopic+"/current_temp/value",
+        "temperature_command_topic": baseTopic+"/set_temp/set",
         "unit_of_measurement": "°C"
+
     }
 
-    client.publish("homeassistant/sensor/spanet_"+spaName+"/current_temp/config",json.dumps(ha_discovery),retain=True)
+    client.publish("homeassistant/climate/spanet_"+spaName+"/config",json.dumps(ha_discovery),retain=True)
 
     ha_discovery = {
         "availability_topic": baseTopic+"/available",
@@ -240,6 +252,7 @@ while True:
         if spa.sync_status():
             logger.info("Successful read")
             lastUpdate = datetime.now()
+            client.publish(baseTopic + "/set_temp/value",spa.set_temp,retain=True)
             client.publish(baseTopic + "/current_temp/value",spa.current_temp,retain=True)
             client.publish(baseTopic + "/heating/value",spa.heating,retain=True)
             client.publish(baseTopic + "/cleaning_UV/value",spa.cleaning_UV,retain=True)
