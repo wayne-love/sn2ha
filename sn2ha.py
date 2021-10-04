@@ -166,8 +166,7 @@ if homeAssistantDiscovery:
         "availability_topic": baseTopic+"/available",
         "temperature_state_topic": baseTopic+"/set_temp/value",
         "current_temperature_topic": baseTopic+"/current_temp/value",
-        "temperature_command_topic": baseTopic+"/set_temp/set",
-        "unit_of_measurement": "°C"
+        "temperature_command_topic": baseTopic+"/set_temp/set"
     }
     client.publish("homeassistant/climate/spanet_"+spaName+"/config",json.dumps(ha_discovery),retain=True)
 
