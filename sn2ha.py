@@ -31,7 +31,7 @@ except:
     logger.exception("Unable to parse config file.")
     quit(-1)
     
-# Change these
+# Set environment
 spaName = config.get("sn2ha","spaName")
 homeAssistantDiscovery = config.get("sn2ha","homeAssistantDiscovery")
 mqttServer = config.get("sn2ha","mqttServer")
