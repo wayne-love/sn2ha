@@ -9,6 +9,14 @@ from datetime import timedelta,datetime
 from MQTTHandler import MQTTHandler
 
 
+# Define constants
+HPUMP_MODES = {
+    0: "auto",
+    1: "heat",
+    2: "cool",
+    3: "off"
+}
+
 
 
 socket.setdefaulttimeout(10)
@@ -52,6 +60,8 @@ class SpaNetSpa:
     lights = False
     hpump_ambi_temp = 0
     hpump_cond_temp = 0
+    hpump_mode_num = 0
+    hpump_mode_txt = ""
     _response = b''
 
 
@@ -78,6 +88,7 @@ class SpaNetSpa:
   
         global commandBuffer
 
+        logger.debug("Connect to WiFly")
         try:
             s = socket.socket()
             s.connect(('WiFly-EZX', 2000))
@@ -88,6 +99,7 @@ class SpaNetSpa:
             logger.error("Timeout waiting for hello string")
             return False
 
+        logger.debug("Hello received, processsing "+str(len(commandBuffer))+" commands")
         newBuffer = dict(commandBuffer)
         commandBuffer = {}
 
@@ -100,6 +112,15 @@ class SpaNetSpa:
             if entry=="set_temp":
                 tempStr = str(int(float(setValue)*10))
                 self.send_command(s,"W40:"+tempStr,tempStr)
+            if entry=="hpump_mode_txt":
+                for key,value in HPUMP_MODES.items():
+                    logger.debug("looking for "+setValue)
+                    logger.debug("at "+value)
+                    if value==setValue:
+                        logger.debug("got "+str(key))
+                        self.send_command(s,"W99:"+str(key),str(key))
+
+        logger.debug("Requesting status")
 
         try:
             self.send(s,'\n'.encode())
@@ -113,8 +134,11 @@ class SpaNetSpa:
             self.heating = bool(int(self.response[104])) # Is the heating running
             self.cleaning_UV = bool(int(self.response[103])) # Is the ozone/UV cleaning running
             self.cleaning_Sanitise = bool(int(self.response[108])) # Is the sanatise cycle running
-            self.hpump_ambi_temp = int(self.response[251])
-            self.hpump_cond_temp = int(self.response[252])
+            self.hpump_ambi_temp = int(self.response[251]) # heat pump ambient temp
+            self.hpump_cond_temp = int(self.response[252]) # heat pump condensor temp
+            self.hpump_mode_num = int(self.response[176]) # heat pump mode (numeric)
+            self.hpump_mode_txt = HPUMP_MODES[self.hpump_mode_num] #heat pump mode (string)
+
             return True
         except:
             logger.error("Timeout reading from SpaNet controller")
@@ -166,7 +190,10 @@ if homeAssistantDiscovery:
         "availability_topic": baseTopic+"/available",
         "temperature_state_topic": baseTopic+"/set_temp/value",
         "current_temperature_topic": baseTopic+"/current_temp/value",
-        "temperature_command_topic": baseTopic+"/set_temp/set"
+        "temperature_command_topic": baseTopic+"/set_temp/set",
+        "modes": ["off","cool","heat","auto"],
+        "mode_state_topic": baseTopic + "/hpump_mode_txt/value",
+        "mode_command_topic": baseTopic + "/hpump_mode_txt/set"
     }
     client.publish("homeassistant/climate/spanet_"+spaName+"/config",json.dumps(ha_discovery),retain=True)
 
@@ -295,5 +322,7 @@ while True:
             client.publish(baseTopic + "/cleaning_UV/value",spa.cleaning_UV,retain=True)
             client.publish(baseTopic + "/cleaning_Sanitise/value",spa.cleaning_Sanitise,retain=True)
             client.publish(baseTopic + "/lights/value",spa.lights,0,True)
+            client.publish(baseTopic + "/hpump_mode_num/value",spa.hpump_mode_num,0,True)
+            client.publish(baseTopic + "/hpump_mode_txt/value",spa.hpump_mode_txt,0,True)
             logger.debug("Response - " + ",".join(str(e) for e in (spa.response)))
     time.sleep(1)
