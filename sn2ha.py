@@ -62,6 +62,7 @@ class SpaNetSpa:
     hpump_cond_temp = 0
     hpump_mode_num = 0
     hpump_mode_txt = ""
+    element_boost = False
     _response = b''
 
 
@@ -119,6 +120,11 @@ class SpaNetSpa:
                     if value==setValue:
                         logger.debug("got "+str(key))
                         self.send_command(s,"W99:"+str(key),str(key))
+            if entry=="element_boost":
+                if setValue=="ON":
+                    self.send_command(s,"W98:1","1")
+                else:
+                    self.send_command(s,"W98:0","0")
 
         logger.debug("Requesting status")
 
@@ -137,6 +143,7 @@ class SpaNetSpa:
             self.hpump_ambi_temp = int(self.response[251]) # heat pump ambient temp
             self.hpump_cond_temp = int(self.response[252]) # heat pump condensor temp
             self.hpump_mode_num = int(self.response[176]) # heat pump mode (numeric)
+            self.element_boost = bool(int(self.response[175])) #element boost
             self.hpump_mode_txt = HPUMP_MODES[self.hpump_mode_num] #heat pump mode (string)
 
             return True
@@ -193,7 +200,9 @@ if homeAssistantDiscovery:
         "temperature_command_topic": baseTopic+"/set_temp/set",
         "modes": ["off","cool","heat","auto"],
         "mode_state_topic": baseTopic + "/hpump_mode_txt/value",
-        "mode_command_topic": baseTopic + "/hpump_mode_txt/set"
+        "mode_command_topic": baseTopic + "/hpump_mode_txt/set",
+        "aux_state_topic": baseTopic + "/element_boost/value",
+        "aux_command_topic": baseTopic + "/element_boost/set"
     }
     client.publish("homeassistant/climate/spanet_"+spaName+"/config",json.dumps(ha_discovery),retain=True)
 
@@ -324,5 +333,6 @@ while True:
             client.publish(baseTopic + "/lights/value",spa.lights,0,True)
             client.publish(baseTopic + "/hpump_mode_num/value",spa.hpump_mode_num,0,True)
             client.publish(baseTopic + "/hpump_mode_txt/value",spa.hpump_mode_txt,0,True)
+            client.publish(baseTopic + "/element_boost/value","ON" if spa.element_boost else "OFF",0,True)
             logger.debug("Response - " + ",".join(str(e) for e in (spa.response)))
     time.sleep(1)
