@@ -228,7 +228,7 @@ if homeAssistantDiscovery:
         "state_topic":baseTopic+"/hpump_cond_temp/value",
         "name": "Heat pump condensor temperature",
         "unique_id": "spanet_" + spaName +"_hpump_cond_temp",
-        "unit_of_measurement": "°C"
+        "unit_of_measurement": "\u00B0C"
     }
     client.publish("homeassistant/sensor/spanet_"+spaName+"/hpump_cond_temp/config",json.dumps(ha_discovery),retain=True)
 
