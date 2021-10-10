@@ -7,6 +7,8 @@ import configparser
 import io
 from datetime import timedelta,datetime
 from MQTTHandler import MQTTHandler
+from connection import connection
+import connection
 
 
 # Define constants
@@ -18,8 +20,6 @@ HPUMP_MODES = {
 }
 
 
-
-socket.setdefaulttimeout(10)
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -50,6 +50,10 @@ mqttHandler = MQTTHandler(mqttServer, baseTopic + "/debug")
 mqttHandler.setLevel(logging.DEBUG)
 mqttHandler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s: %(message)s'))
 logger.addHandler(mqttHandler)
+
+c = connection.connection()
+
+
 
 class SpaNetSpa:
     set_temp = 0
@@ -89,67 +93,57 @@ class SpaNetSpa:
   
         global commandBuffer
 
-        logger.debug("Connect to WiFly")
-        try:
-            s = socket.socket()
-            s.connect(('WiFly-EZX', 2000))
-            self.send(s,'\n'.encode())
-            hello_str = s.recv(1024)
-            self.send(s,'\n'.encode())
-        except:
-            logger.error("Timeout waiting for hello string")
-            return False
-
-        logger.debug("Hello received, processsing "+str(len(commandBuffer))+" commands")
+        logger.debug("Processsing "+str(len(commandBuffer))+" commands")
         newBuffer = dict(commandBuffer)
         commandBuffer = {}
 
         for entry in newBuffer:
             setValue = newBuffer[entry]
             if entry=="cleaning_Sanitise":
-                self.send_command(s,"W12","W12")
+                c.write("W12","W12",True)
             if entry=="lights":
-                self.send_command(s,"W14","W14")
+                c.write("W14","W14",True)
             if entry=="set_temp":
                 tempStr = str(int(float(setValue)*10))
-                self.send_command(s,"W40:"+tempStr,tempStr)
+                c.write("W40:"+tempStr,tempStr,True)
             if entry=="hpump_mode_txt":
                 for key,value in HPUMP_MODES.items():
-                    logger.debug("looking for "+setValue)
-                    logger.debug("at "+value)
                     if value==setValue:
-                        logger.debug("got "+str(key))
-                        self.send_command(s,"W99:"+str(key),str(key))
+                        c.write("W99:"+str(key),str(key),True)
             if entry=="element_boost":
                 if setValue=="ON":
-                    self.send_command(s,"W98:1","1")
+                    c.write("W98:1","1",True)
                 else:
-                    self.send_command(s,"W98:0","0")
+                    c.write("W98:0","0",True)
 
         logger.debug("Requesting status")
 
-        try:
-            self.send(s,'\n'.encode())
-            self.send(s,'RF\n'.encode())
-            self.response = s.recv(1024).split(b",")
-            s.close
-
-            self.set_temp = int(self.response[128].decode())/10
-            self.current_temp = int(self.response[107].decode())/10
-            self.lights = bool(int(self.response[106])) # Lights on or off
-            self.heating = bool(int(self.response[104])) # Is the heating running
-            self.cleaning_UV = bool(int(self.response[103])) # Is the ozone/UV cleaning running
-            self.cleaning_Sanitise = bool(int(self.response[108])) # Is the sanatise cycle running
-            self.hpump_ambi_temp = int(self.response[251]) # heat pump ambient temp
-            self.hpump_cond_temp = int(self.response[252]) # heat pump condensor temp
-            self.hpump_mode_num = int(self.response[176]) # heat pump mode (numeric)
-            self.element_boost = bool(int(self.response[175])) #element boost
-            self.hpump_mode_txt = HPUMP_MODES[self.hpump_mode_num] #heat pump mode (string)
-
-            return True
-        except:
-            logger.error("Timeout reading from SpaNet controller")
-            return False
+        response_str = c.write("RF","RF",False)
+        logger.debug("Response - " + response_str)
+        if response_str != "":
+        
+            response = response_str.split(",")
+            
+            if response!="":
+                self.set_temp = int(response[128])/10
+                self.current_temp = int(response[107])/10
+                self.lights = bool(int(response[106])) # Lights on or off
+                self.heating = bool(int(response[104])) # Is the heating running
+                self.cleaning_UV = bool(int(response[103])) # Is the ozone/UV cleaning running
+                self.cleaning_Sanitise = bool(int(response[108])) # Is the sanatise cycle running
+                self.hpump_ambi_temp = int(response[251]) # heat pump ambient temp
+                self.hpump_cond_temp = int(response[252]) # heat pump condensor temp
+                self.hpump_mode_num = int(response[176]) # heat pump mode (numeric)
+                self.element_boost = bool(int(response[175])) #element boost
+                self.hpump_mode_txt = HPUMP_MODES[self.hpump_mode_num] #heat pump mode (string)
+                return True
+            else:
+                logger.error("Error reading from SpaNet controller")
+                return False
+        else:
+            logger.warning("No response received, resetting connection")
+            c.close()
+            c.connect()
 
 def on_message(client, userdata, message):
     topic = str(message.topic).split("/")[2]
@@ -307,6 +301,9 @@ if homeAssistantDiscovery:
     client.publish("homeassistant/light/spanet_"+spaName+"/lights/config",json.dumps(ha_discovery),retain=True)
 
 
+
+
+c.connect()
 spa = SpaNetSpa()
 
 lastUpdate = datetime.now() - timedelta(seconds=300) # set the lastupdate to be 5 minutes ago to force the first read.
@@ -334,5 +331,5 @@ while True:
             client.publish(baseTopic + "/hpump_mode_num/value",spa.hpump_mode_num,0,True)
             client.publish(baseTopic + "/hpump_mode_txt/value",spa.hpump_mode_txt,0,True)
             client.publish(baseTopic + "/element_boost/value","ON" if spa.element_boost else "OFF",0,True)
-            logger.debug("Response - " + ",".join(str(e) for e in (spa.response)))
+
     time.sleep(1)
